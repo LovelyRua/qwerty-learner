@@ -78,7 +78,7 @@ export const isShowAnswerOnHoverAtom = atomWithStorage('isShowAnswerOnHover', tr
 
 export const isTextSelectableAtom = atomWithStorage('isTextSelectable', false)
 
-// 日语罗马字拼写方案: 开启后目标拼写与输入判定使用训令式(Kunrei-shiki), 关闭时使用黑本式(Hepburn)
+// Display preference only; both spelling systems are always accepted as input.
 export const isKunreiShikiEnabledAtom = atomWithStorage('isKunreiShikiEnabled', false)
 
 export const reviewModeInfoAtom = reviewInfoAtom({

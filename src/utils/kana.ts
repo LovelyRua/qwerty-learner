@@ -84,38 +84,133 @@ const hepburnToKunreiShikiSyllables: RomajiToHiragana = {
   jo: 'zyo',
 }
 
+// The first two entries are the preferred Hepburn and Kunrei displays.
+// Remaining entries are keyboard aliases, shared by display and input matching.
+const romajiSpellingGroups: string[][] = [
+  ...Object.entries(hepburnToKunreiShikiSyllables).map(([hepburn, kunrei]) => {
+    const variants = [hepburn, kunrei]
+    if (/^ch[aueo]$/.test(hepburn)) variants.push('cy' + hepburn.slice(-1))
+    if (/^j[aueo]$/.test(hepburn)) variants.push('jy' + hepburn.slice(-1))
+    return variants
+  }),
+  ['cyi', 'tyi'],
+  ['jyi', 'zyi'],
+]
+
 /**
  * 将黑本式罗马字转换为训令式罗马字。
  * 使用最长音节匹配,未命中的字符保持原样(如长音符 "ou"、助词 "wo" 等不受影响)。
  */
 export function hepburnToKunreiShiki(romaji: string): string {
-  const lowerStr = romaji.toLowerCase()
-  let result = ''
-  let offset = 0
+  return formatRomajiDisplay(romaji, true)
+}
 
-  while (offset < lowerStr.length) {
-    const maxSyllableLength = Math.min(4, lowerStr.length - offset)
-    let matched = false
-
-    for (let length = maxSyllableLength; length > 0; length--) {
-      const syllable = lowerStr.substring(offset, offset + length)
-      const replacement = hepburnToKunreiShikiSyllables[syllable]
-
-      if (replacement !== undefined) {
-        result += replacement
-        offset += length
-        matched = true
-        break
-      }
+/** Convert the preferred hint spelling without restricting accepted input. */
+export function formatRomajiDisplay(romaji: string, kunrei: boolean): string {
+  const replacements = new Map<string, string>()
+  for (const variants of romajiSpellingGroups) {
+    const hepburn = variants[0]
+    const preferred = variants[kunrei ? 1 : 0]
+    for (const variant of variants) {
+      replacements.set(variant, preferred)
+      replacements.set(variant[0] + variant, preferred[0] + preferred)
     }
+    if (hepburn.startsWith('ch')) replacements.set('t' + hepburn, preferred[0] + preferred)
+  }
+  const pattern = new RegExp(
+    Array.from(replacements.keys())
+      .sort((a, b) => b.length - a.length)
+      .join('|'),
+    'gi',
+  )
+  return romaji.replace(pattern, (original) => {
+    const replacement = replacements.get(original.toLowerCase()) ?? original
+    if (original === original.toUpperCase()) return replacement.toUpperCase()
+    if (original[0] === original[0].toUpperCase()) return replacement[0].toUpperCase() + replacement.slice(1)
+    return replacement
+  })
+}
 
-    if (!matched) {
-      result += lowerStr[offset]
-      offset += 1
+/** Return a valid spelling continuing the input, or null for an invalid prefix.
+ * Match each syllable independently so Hepburn and Kunrei can be mixed.
+ */
+export function matchRomajiInput(target: string, input: string, ignoreCase = true): string | null {
+  const groups = romajiSpellingGroups.flatMap((spellings) => {
+    const hepburn = spellings[0]
+    const doubled = spellings.map((spelling) => spelling[0] + spelling)
+    if (hepburn.startsWith('ch')) doubled.push('t' + hepburn)
+    return [spellings, doubled]
+  })
+  const normalize = (value: string) => (ignoreCase ? value.toLowerCase() : value)
+  const tokens: string[][] = []
+  let offset = 0
+  while (offset < target.length) {
+    // A standalone n before a consonant (or at word end) is ん.
+    // Consume an existing nn as one nasal only when it cannot be n + na/ni/etc.
+    const rest = target.slice(offset).toLowerCase()
+    // Treat the dictionary's n' as one nasal, including before na/ni/etc.
+    // Before vowels or y, keep a separator or nn to avoid changing the kana.
+    if (rest.startsWith("n'")) {
+      const original = target.slice(offset, offset + 2)
+      const n = original[0]
+      const variants = [original, n + n]
+      if (!/^[aeiouy]/.test(rest.slice(2))) variants.push(n)
+      tokens.push(variants)
+      offset += 2
+      continue
+    }
+    const nasalLength = /^nn(?=$|[^aeiouyn'])/.test(rest) ? 2 : /^n(?=$|[^aeiouy'])/.test(rest) ? 1 : 0
+    if (nasalLength) {
+      const original = target.slice(offset, offset + nasalLength)
+      const variants = original === original.toUpperCase() ? ['N', 'NN'] : ['n', 'nn']
+      tokens.push([original, ...variants.filter((variant) => variant !== original)])
+      offset += nasalLength
+      continue
+    }
+    const group = groups
+      .flatMap((variants) => variants.map((variant) => ({ variants, variant })))
+      .filter(({ variant }) => target.slice(offset, offset + variant.length).toLowerCase() === variant)
+      .sort((a, b) => b.variant.length - a.variant.length)[0]
+    if (group) {
+      const original = target.slice(offset, offset + group.variant.length)
+      const variants = group.variants.map((variant) => {
+        if (original === original.toUpperCase()) return variant.toUpperCase()
+        if (original[0] === original[0].toUpperCase()) return variant[0].toUpperCase() + variant.slice(1)
+        return variant
+      })
+      tokens.push([original, ...variants.filter((variant) => variant !== original)])
+      offset += group.variant.length
+    } else {
+      tokens.push([target[offset++]])
     }
   }
 
-  return result
+  const failed = new Set<string>()
+  const visit = (index: number, consumed: number): string | null => {
+    if (index === tokens.length) return consumed === input.length ? '' : null
+    const key = `${index}:${consumed}`
+    if (failed.has(key)) return null
+    const remaining = normalize(input.slice(consumed))
+    for (const variant of tokens[index]) {
+      const candidate = normalize(variant)
+      if (candidate.startsWith(remaining)) {
+        return (
+          variant +
+          tokens
+            .slice(index + 1)
+            .map((token) => token[0])
+            .join('')
+        )
+      }
+      if (remaining.startsWith(candidate)) {
+        const suffix = visit(index + 1, consumed + variant.length)
+        if (suffix !== null) return variant + suffix
+      }
+    }
+    failed.add(key)
+    return null
+  }
+  return visit(0, 0)
 }
 
 interface RomajiToHiragana {

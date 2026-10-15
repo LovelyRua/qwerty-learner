@@ -59,13 +59,6 @@ export default function AdvancedSetting() {
     [setIsShowAnswerOnHover],
   )
 
-  const onToggleKunreiShiki = useCallback(
-    (checked: boolean) => {
-      setIsKunreiShikiEnabled(checked)
-    },
-    [setIsKunreiShikiEnabled],
-  )
-
   return (
     <ScrollArea.Root className="flex-1 select-none overflow-y-auto ">
       <ScrollArea.Viewport className="h-full w-full px-3">
@@ -132,18 +125,22 @@ export default function AdvancedSetting() {
           </div>
           {currentLanguage === 'romaji' && (
             <div className={styles.section}>
-              <span className={styles.sectionLabel}>使用训令式罗马字</span>
+              <span className={styles.sectionLabel}>罗马音注音显示</span>
               <span className={styles.sectionDescription}>
-                开启后，日语练习的拼写与输入判定采用训令式（如 つ 对应 tu、し 对应 si、ち 对应 ti、ふ 对应
-                hu）；关闭时采用黑本式（tsu、shi、chi、fu）
+                切换平文式（shi、chi、tsu）或训令式（si、ti、tu）注音显示。两种输入始终兼容，也可混用。
               </span>
               <div className={styles.switchBlock}>
-                <Switch checked={isKunreiShikiEnabled} onChange={onToggleKunreiShiki} className="switch-root">
+                <Switch
+                  checked={isKunreiShikiEnabled}
+                  onChange={setIsKunreiShikiEnabled}
+                  aria-label="使用训令式注音显示"
+                  className="switch-root"
+                >
                   <span aria-hidden="true" className="switch-thumb" />
                 </Switch>
-                <span className="text-right text-xs font-normal leading-tight text-gray-600">{`训令式已${
-                  isKunreiShikiEnabled ? '开启' : '关闭'
-                }`}</span>
+                <span className="text-right text-xs font-normal leading-tight text-gray-600">
+                  {isKunreiShikiEnabled ? '训令式' : '平文式'}
+                </span>
               </div>
             </div>
           )}
